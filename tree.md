@@ -199,6 +199,47 @@ panda/
 
 ## Communication Architecture
 
+### **Why STM32 Uses Python (Architecture Explanation)**
+
+The STM32 microcontroller doesn't actually "use" Python - there's an important architectural separation:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ARCHITECTURE SEPARATION                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Host Computer (Python)                     STM32 Microcontroller (C)
+┌─────────────────────────┐                ┌─────────────────────────┐
+│                         │                │                         │
+│  🐍 Python Application  │                │  ⚙️  C Firmware         │
+│  ┌─────────────────────┤                │  ┌─────────────────────┤
+│  │ • Easy Development  │                │  │ • Real-time Control │
+│  │ • Rich Libraries    │                │  │ • Memory Constrained│
+│  │ • Cross-platform    │                │  │ • Hardware Access   │
+│  │ • Rapid Prototyping │                │  │ • Safety Critical   │
+│  └─────────────────────┤                │  └─────────────────────┤
+│                         │                │                         │
+│  Resources:             │                │  Resources:             │
+│  • GB of RAM           │                │  • KB of RAM           │
+│  • GHz CPU             │                │  • MHz CPU             │
+│  • Full OS             │                │  • Bare Metal          │
+│  • No Real-time Req.   │                │  • Real-time Critical  │
+│                         │                │                         │
+└─────────────────────────┘                └─────────────────────────┘
+              │                                          │
+              │              USB Protocol                │
+              │ ◄──────────────────────────────────────► │
+              │                                          │
+┌─────────────▼─────────────┐                ┌─────────▼─────────────┐
+│     Python Library        │                │    STM32 Firmware     │
+│  ┌─────────────────────┐  │                │  ┌─────────────────┐  │
+│  │ panda.can_send()    │  │                │  │ USB Handler     │  │
+│  │ panda.can_recv()    │  │                │  │ CAN Controller  │  │
+│  │ panda.set_safety()  │  │                │  │ Safety Hooks    │  │
+│  └─────────────────────┘  │                │  └─────────────────┘  │
+└───────────────────────────┘                └───────────────────────┘
+```
+
 ### **Protocol Stack**
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -216,9 +257,39 @@ panda/
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### **Data Flow**
-1. **Host Application** → Python Library → USB Protocol → STM32 Firmware → CAN Bus → **Vehicle**
-2. **Vehicle** → CAN Bus → STM32 Firmware → USB Protocol → Python Library → **Host Application**
+### **Communication Flow**
+```
+Python App (Host) ←→ USB Protocol ←→ STM32 Firmware ←→ CAN Bus ←→ Vehicle
+
+Example:
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ panda.can_send()│───►│ USB Control Cmd │───►│ Safety Check    │───►│ Vehicle CAN Bus │
+│ (Python)        │    │ (USB Protocol)  │    │ (STM32 C Code)  │    │ (Physical)      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### **Why Python is Used (On Host Side)**
+
+1. **Automotive Integration**: Works with opendbc (CAN database) and openpilot (self-driving software)
+2. **Ease of Development**: Simple API for complex automotive protocols
+3. **Cross-Platform**: Windows, Linux, macOS support
+4. **Rapid Prototyping**: Quick testing and debugging
+5. **comma.ai Ecosystem**: Primary language for their automotive software stack
+
+### **Data Flow Examples**
+```python
+# Python code (runs on computer)
+panda = Panda()
+panda.can_send(0x123, b'data', 0)  # Send CAN message
+msgs = panda.can_recv()            # Receive CAN messages
+```
+
+**What happens internally:**
+1. **Python Library** → Formats CAN message with USB protocol
+2. **USB Transfer** → Sends command to STM32
+3. **STM32 Firmware** → Validates message with safety hooks
+4. **CAN Controller** → Transmits on vehicle CAN bus
+5. **Vehicle** → Receives and processes CAN message
 
 ## Safety and Compliance
 
